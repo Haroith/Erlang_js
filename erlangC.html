@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Erlang C Calculator</title>
+</head>
+<body>
+<h2>Erlang C Calculator</h2>
+<form id="erlangForm">
+    <label>Calls Forecast (15 min):
+        <input type="number" id="callsForecast15min" value="47">
+    </label><br><br>
+    <label>Service Level Goal (%):
+        <input type="number" id="serviceLevelPercentsGoal" value="80">
+    </label><br><br>
+    <label>Service Level Time Goal (sec):
+        <input type="number" id="serviceLevelTimeGoal" value="20">
+    </label><br><br>
+    <label>Average Handling Time (sec):
+        <input type="number" id="ahtSeconds" value="120">
+    </label><br><br>
+    <button type="submit">Calculate</button>
+</form>
+
+<h3>Result</h3>
+<pre id="result"></pre>
+
+<script>
+    class ErlangC {
+        constructor(callsForecast15min, averageHandlingTimeSeconds) {
+            this.lambda = callsForecast15min / 15; // per minute
+            this.beta = averageHandlingTimeSeconds / 60; // minutes
+            this.a = this.load(this.lambda, this.beta);
+        }
+
+        factorial(n) {
+            let result = 1;
+            for (let i = 1; i <= n; i++) {
+                result *= i;
+            }
+            return result;
+        }
+
+        load(calls, averageHandlingTime) {
+            return calls * averageHandlingTime;
+        }
+
+        sumForDP(s) {
+            let sum = 0;
+            for (let j = 0; j <= s - 1; j++) {
+                sum += Math.pow(this.a, j) / this.factorial(j);
+            }
+            return sum;
+        }
+
+        delayProbability(s) {
+            const numerator = Math.pow(this.a, s) / (this.factorial(s - 1) * (s - this.a));
+            const denominator = this.sumForDP(s) + numerator;
+            return numerator / denominator;
+        }
+
+        serviceLevelPercents(s, tMinutes) {
+            const probDelay = this.delayProbability(s);
+            const expPart = Math.exp(-1 * ((s / this.beta - this.lambda) * tMinutes));
+            let serviceLevel = 1 - probDelay * expPart;
+            serviceLevel *= 100;
+            return serviceLevel;
+        }
+
+        averageSpeedAnswerMinutes(s) {
+            return (this.delayProbability(s) * this.beta) / (s - this.a);
+        }
+    }
+
+    document.getElementById("erlangForm").addEventListener("submit", function(e) {
+        e.preventDefault();
+
+        const callsForecast15min = parseFloat(document.getElementById("callsForecast15min").value);
+        const serviceLevelPercentsGoal = parseFloat(document.getElementById("serviceLevelPercentsGoal").value);
+        const serviceLevelTimeGoal = parseFloat(document.getElementById("serviceLevelTimeGoal").value) / 60; // convert to minutes
+        const ahtSeconds = parseFloat(document.getElementById("ahtSeconds").value);
+
+        const erlangC = new ErlangC(callsForecast15min, ahtSeconds);
+
+        let calculatedSL = 1;
+        let agents = Math.ceil(erlangC.a);
+
+        while (calculatedSL < serviceLevelPercentsGoal) {
+            agents++;
+            calculatedSL = erlangC.serviceLevelPercents(agents, serviceLevelTimeGoal);
+        }
+
+        const calculatedASA = erlangC.averageSpeedAnswerMinutes(agents);
+
+        const output =
+            "Required agents = " + agents + "\n" +
+            "Resulted service level = " + calculatedSL.toFixed(2) + "%\n" +
+            "Resulted average speed of answer = " + calculatedASA.toFixed(2) + " minutes";
+
+        document.getElementById("result").innerText = output;
+    });
+</script>
+</body>
+</html>
