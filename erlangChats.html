@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Erlang Chats Calculator</title>
+</head>
+<body>
+<h2>Erlang Chats Calculator</h2>
+<form id="erlangForm">
+    <label>Messages Forecast (15 min):
+        <input type="number" id="messagesForecast15min" value="147">
+    </label><br><br>
+    <label>Service Level Goal (%):
+        <input type="number" id="serviceLevelPercentsGoal" value="80">
+    </label><br><br>
+    <label>Service Level Time Goal (sec):
+        <input type="number" id="serviceLevelTimeGoal" value="20">
+    </label><br><br>
+    <label>Average Handling Time (sec):
+        <input type="number" id="ahtSeconds" value="120">
+    </label><br><br>
+    <label>Average Patience (minutes):
+        <input type="number" id="averagePatience" value="10">
+    </label><br><br>
+    <label>Concurrency (chats per agent):
+        <input type="number" id="concurrency" value="3">
+    </label><br><br>
+    <button type="submit">Calculate</button>
+</form>
+
+<h3>Result</h3>
+<pre id="result"></pre>
+
+<script>
+    class ErlangChats {
+        constructor(callsForecast15min, averageHandlingTimeSeconds, averagePatience, concurrency) {
+            this.ACCURACYFORABANDONS = 0.00001;
+            this.concurrency = concurrency;
+
+            // scale load per concurrency
+            callsForecast15min = callsForecast15min / this.concurrency;
+
+            this.lambda = callsForecast15min / 15; // arrivals per minute
+            this.mu = 1 / (averageHandlingTimeSeconds / 60); // service rate per minute
+            this.O = 1 / averagePatience; // abandonment rate (1 / patience in minutes)
+            this.beta = averageHandlingTimeSeconds / 60; // AHT in minutes
+            this.a = this.loadC(this.lambda, this.beta);
+        }
+
+        factorial(n) {
+            let result = 1;
+            for (let i = 1; i <= n; i++) result *= i;
+            return result;
+        }
+
+        loadC(calls, averageHandlingTime) {
+            return calls * averageHandlingTime;
+        }
+
+        sumForDP(s) {
+            let sum = 0;
+            for (let j = 0; j <= s - 1; j++) {
+                sum += Math.pow(this.a, j) / this.factorial(j);
+            }
+            return sum;
+        }
+
+        delayProbability(s) {
+            const numerator = Math.pow(this.a, s) / (this.factorial(s - 1) * (s - this.a));
+            const denominator = this.sumForDP(s) + numerator;
+            return numerator / denominator;
+        }
+
+        serviceLevelPercents(s, tMinutes) {
+            // scale by concurrency
+            s *= this.concurrency;
+            const probDelay = this.delayProbability(s);
+            const expPart = Math.exp(-1 * ((s / this.beta - this.lambda) * tMinutes));
+            let serviceLevel = 1 - probDelay * expPart;
+            serviceLevel *= 100;
+            return serviceLevel;
+        }
+
+        load(n) {
+            return this.lambda / (n * this.mu);
+        }
+
+        A(x, y) {
+            let eternalSum = 0;
+            let previousSum = -1;
+            let j = 1;
+            while (eternalSum - previousSum > this.ACCURACYFORABANDONS) {
+                previousSum = eternalSum;
+                let denominator = 1;
+                for (let k = 1; k <= j; k++) {
+                    denominator *= x + k;
+                }
+                eternalSum += Math.pow(y, j) / denominator;
+                j++;
+            }
+            return 1 + eternalSum;
+        }
+
+        probabilityOfAbandon(n) {
+            const ro = this.load(n);
+            return 1 / (ro * this.A((n * this.mu) / this.O, this.lambda / this.O)) + 1 - 1 / ro;
+        }
+    }
+
+    document.getElementById("erlangForm").addEventListener("submit", function(e) {
+        e.preventDefault();
+
+        let messagesForecast15min = parseFloat(document.getElementById("messagesForecast15min").value);
+        const serviceLevelPercentsGoal = parseFloat(document.getElementById("serviceLevelPercentsGoal").value);
+        const serviceLevelTimeGoal = parseFloat(document.getElementById("serviceLevelTimeGoal").value) / 60; // minutes
+        const ahtSeconds = parseFloat(document.getElementById("ahtSeconds").value);
+        const averagePatience = parseFloat(document.getElementById("averagePatience").value);
+        const concurrency = parseFloat(document.getElementById("concurrency").value);
+
+        // Step 1: agents without abandons
+        let erlangChats = new ErlangChats(messagesForecast15min, ahtSeconds, averagePatience, concurrency);
+        let calculatedSL = 1;
+        let agents = Math.ceil(erlangChats.a);
+
+        while (calculatedSL < serviceLevelPercentsGoal) {
+            agents++;
+            calculatedSL = erlangChats.serviceLevelPercents(agents, serviceLevelTimeGoal);
+        }
+
+        // Step 2: probability of abandon
+        const calculatedPab = erlangChats.probabilityOfAbandon(agents);
+
+        let output = "Required agents (without abandons) = " + agents + "\n" +
+            "Resulted probability of abandon = " + (calculatedPab * 100).toFixed(2) + "%\n\n";
+
+        // Step 3: adjust for abandons
+        messagesForecast15min = messagesForecast15min * (1 - calculatedPab);
+        erlangChats = new ErlangChats(messagesForecast15min, ahtSeconds, averagePatience, concurrency);
+        calculatedSL = 1;
+        agents = Math.ceil(erlangChats.a);
+
+        while (calculatedSL < serviceLevelPercentsGoal) {
+            agents++;
+            calculatedSL = erlangChats.serviceLevelPercents(agents, serviceLevelTimeGoal);
+        }
+
+        output += "Required agents (with abandons) = " + agents + "\n" +
+            "Resulted service level = " + calculatedSL.toFixed(2) + "%";
+
+        document.getElementById("result").innerText = output;
+    });
+</script>
+</body>
+</html>
