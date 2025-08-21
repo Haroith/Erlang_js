@@ -1,17 +1,107 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Erlang B Calculator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        label {
+            display: block;
+            argin-top: 10px;
+        }
+        input {
+            padding: 5px;
+            width: 150px;
+        }
+        button {
+            margin-top: 15px;
+            padding: 8px 12px;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
 <body>
 
-<h2>JavaScript in Body tag</h2>
+<h1>Erlang B Calculator</h1>
+<form id="calcForm">
+    <label>
+        Calls forecast (per 15 min):
+        <input type="number" id="callsForecast" value="47" step="1">
+    </label>
+    <label>
+        Service level goal (%):
+        <input type="number" id="serviceLevelGoal" value="80" step="0.01">
+    </label>
+    <label>
+        Average handling time (seconds):
+        <input type="number" id="aht" value="63" step="0.01">
+    </label>
+    <button type="button" onclick="runCalculation()">Calculate</button>
+</form>
 
-<p id="demo">That's ErlangB Model</p>
-
-<button type="button" onclick="myFunction()">Let's try</button>
+<pre id="output"></pre>
 
 <script>
-    function myFunction() {
-        document.getElementById("demo").innerHTML = "Text is modified";
-        console.log('007 is here!');
+    class ErlangB {
+        constructor(calls, averageHandlingTime) {
+            this.erlangs = this.calcErlangs(calls, averageHandlingTime);
+        }
+
+        factorial(n) {
+            let result = 1;
+            for (let i = 1; i <= n; i++) {
+                result *= i;
+            }
+            return result;
+        }
+
+        calcErlangs(calls, averageHandlingTime) {
+            return calls * averageHandlingTime;
+        }
+
+        denominatorForPb(agents) {
+            let denominator = 0;
+            for (let i = 0; i <= agents; i++) {
+                denominator += Math.pow(this.erlangs, i) / this.factorial(i);
+            }
+            return denominator;
+        }
+
+        probabilityOfBlocking(agents) {
+            return (Math.pow(this.erlangs, agents) / this.factorial(agents)) /
+                this.denominatorForPb(agents);
+        }
+    }
+
+    function runCalculation() {
+        // Get input values
+        let callsForecast = parseFloat(document.getElementById('callsForecast').value);
+        let serviceLevelGoal = parseFloat(document.getElementById('serviceLevelGoal').value);
+        let aht = parseFloat(document.getElementById('aht').value) / 60; // seconds to minutes
+
+        // Calculate
+        let E = new ErlangB(callsForecast, aht);
+        let calculatedSL = 1;
+        let agents = 0;
+
+        while (calculatedSL > (1 - serviceLevelGoal / 100)) {
+            agents++;
+            calculatedSL = E.probabilityOfBlocking(agents);
+        }
+
+        calculatedSL = Math.round((1 - calculatedSL) * 100 * 100) / 100;
+
+        // Output
+        document.getElementById('output').textContent =
+            "Required agents = " + agents + "\n" +
+            "Resulted service level = " + calculatedSL + "%";
     }
 </script>
 
